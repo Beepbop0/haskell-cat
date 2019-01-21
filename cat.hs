@@ -8,7 +8,7 @@
 -- b = line numbers where blank lines aren't numbered
 -- e = show "ends" (newlines) with "$"
 -- T = show tabs with "^I"
--- TODO: make use of Data.List.Stream for better effeciency
+-- TODO: make use of Data.List.Stream for better efficiency
 
 import System.Environment ( getArgs )
 import System.IO
@@ -16,6 +16,7 @@ import Data.String ( lines, unlines )
 import Data.Char ( toUpper, toLower )
 import Data.List ( isPrefixOf, genericLength )
 
+data Result = OK | Error String deriving (Eq)
 data NumMode = B | N deriving (Eq)
 type Arg = Char
 type Args = String
@@ -25,17 +26,22 @@ whitespace = "\t\r "
 main = do
     cmdargs <- getArgs 
     let f = funcGen dispArgs
-        dispArgs = filter isArg cmdargs 
-        paths = filter (not . isArg) cmdargs 
-    cat <- foldMap readFile paths -- concatenate all of the contents of the files together
+        (dispArgs, paths) = filter' ("-" `isPrefixOf`) cmdargs 
+    cat <- foldMap readFile paths                   -- concatenate all of the contents of the files together 
     putStr $ f cat
 
-isArg = isPrefixOf "-"
+-- fst = a results in true from f
+-- snd = a results in false from f
+filter' :: (a -> Bool) -> [a] -> ([a], [a])
+filter' f = foldr g ([], [])
+  where g e (x,y) = if f e
+                       then (e:x, y)
+                       else (x, e:y)
 
 -- given a list of options, compose a function that uses all of those functions combined
 funcGen :: [Args] -> (String -> String)
 funcGen x 
-    | hasMeArgs x = error "Error: mutually exclusive arguments provided"
+    | Error x <- hasMeArgs x = error x
     | otherwise = unlines . foldr (\s f -> f . scan s) id x . lines
   where 
     scan :: Args -> ([String] -> [String])
@@ -53,22 +59,24 @@ funcGen x
             'f' -> map $ fmt whitespace
             _ -> error "Error: invalid mode. read documentation"
 
-hasMeArgs :: [Args] -> Bool
-hasMeArgs l = let f :: Char -> Maybe String -> Maybe String
-                  f _ Nothing = Nothing
-                  f c m@(Just l) 
-                    | c `elem` meArgs = if opp c `elem` l
-                                           then Nothing
-                                           else Just (c:l)
-                    | otherwise = m
-                  opp 'l' = 'u'
-                  opp 'u' = 'l'
-                  opp 'b' = 'n'
-                  opp 'n' = 'b'
-                  meArgs = "ulbn"
-               in case foldr f (Just []) (concat l) of
-                    Nothing -> True
-                    _ -> False
+hasMeArgs :: [Args] -> Result 
+hasMeArgs l = case foldr f (Right []) (concat l) of
+                Left x -> Error x
+                Right x -> OK
+    where f :: Char -> Either String String -> Either String String
+          f _ (Left x) = Left x
+          f c e@(Right l) 
+            | c `elem` meArgs = if opp c `elem` l
+                                   then Left $ "Error: mutually exclusive args " ++ show c ++ " and " 
+                                                ++ (show . opp) c ++ " applied, remove one"
+                                   else Right $ c:l
+            | otherwise = e
+          opp c = case c of
+                    'l' -> 'u'
+                    'u' -> 'l'
+                    'b' -> 'n'
+                    'n' -> 'b'
+          meArgs = "ulbn"
 
 showTabs :: String -> String
 showTabs = foldr (\c a -> case c of
@@ -76,7 +84,6 @@ showTabs = foldr (\c a -> case c of
                             _ -> c : a)
                  []
 
--- (this function assumes the string has lines applied to it)
 lineEnds :: [String] -> [String]
 lineEnds = map (++"$") 
 
@@ -88,14 +95,12 @@ lineNum B = f 1
         f n ([]:xs) =  [] : f n xs
         f n (x:xs) = lineNumFmt n x : f (n+1) xs
                 
--- format of each line
 lineNumFmt :: Int -> String -> String
 lineNumFmt n l = pad ++ ns ++ "  " ++ l
   where pad = replicate (6 - nl) ' '
         nl = length ns
         ns = show n
 
--- filter a given list of characters
 fmt :: String -> (String -> String)
 fmt ch = filter (`notElem` ch)
 
