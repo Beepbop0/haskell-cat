@@ -11,7 +11,7 @@
 import System.Environment ( getArgs )
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Builder as TB
-import qualified Data.Text.Lazy.IO as TIO
+import qualified Data.Text.Lazy.IO as TIO 
 import Data.Char ( toUpper, toLower )
 import Data.List ( isPrefixOf, genericLength, uncons )
 import Control.Monad ( foldM )
@@ -68,7 +68,7 @@ evalStack l c
                            then Left $ "Error: mutually exclusive args " ++ show c ++ " and " 
                                                 ++ (show . opp) c ++ " applied, remove one"
                            else Right $ c:l
-    | otherwise = Right l
+    | otherwise = return l
     where opp c = case c of
             'u' -> 'l'
             'l' -> 'u'
